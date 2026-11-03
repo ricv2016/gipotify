@@ -619,7 +619,7 @@ function renderQueue() {
   if (!ui.player || ui.player.hidden) return;
   const upcoming = state.queue.slice(state.index + 1, state.index + 51);
   const restCount = state.queue.length - state.index - 1 - upcoming.length;
-  ui.pQueue.replaceChildren(
+  const items = [
     ...upcoming.map((id, k) => {
       const t = state.tracks.get(id);
       if (!t) return null;
@@ -630,7 +630,9 @@ function renderQueue() {
         btn('close', () => removeFromQueue(qi), 'Quitar de la cola'));
     }),
     !upcoming.length ? el('div', { class: 'empty small' }, state.repeat === 'all' ? 'Al terminar vuelve a empezar.' : 'No hay más canciones en la cola.') : null,
-    restCount > 0 ? el('div', { class: 'empty small' }, `y ${plural(restCount, 'canción más', 'canciones más')}`) : null);
+    restCount > 0 ? el('div', { class: 'empty small' }, `y ${plural(restCount, 'canción más', 'canciones más')}`) : null];
+  // replaceChildren(null) pinta el texto "null": quitar los vacíos
+  ui.pQueue.replaceChildren(...items.filter(Boolean));
 }
 
 // ================= acciones sobre canciones =================
