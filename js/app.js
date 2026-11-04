@@ -519,7 +519,7 @@ function buildPlayerUI() {
     ui.miniCover, el('div', { class: 'meta' }, ui.miniT1, ui.miniT2),
     ui.miniPlay, btn('next', () => next(), 'Siguiente'));
 
-  const tabs = [['songs', 'note', 'Canciones'], ['albums', 'album', 'Álbumes'], ['artists', 'person', 'Artistas'], ['playlists', 'playlist', 'Listas']];
+  const tabs = [['songs', 'note', 'Canciones'], ['albums', 'album', 'Álbumes'], ['artists', 'person', 'Artistas'], ['genres', 'genre', 'Géneros'], ['playlists', 'playlist', 'Listas']];
   ui.tabs = el('nav', { class: 'tabs' }, ...tabs.map(([v, ic, label]) =>
     el('button', { type: 'button', class: 'tab', dataset: { tab: v }, onclick: () => goTab('#/' + v) }, icon(ic), el('span', {}, label))));
   ui.reconnect = el('button', { type: 'button', class: 'reconnect', hidden: true, onclick: reconnectAll },
@@ -1112,9 +1112,10 @@ async function scanSource(s) {
     try {
       const file = await h.getFile();
       const old = mine.get(rel);
-      if (old && old.size === file.size) { r.skipped++; continue; }
+      // Sin cambios = mismo tamaño y misma fecha. Así se notan también los cambios solo de etiquetas (p. ej. el género).
+      if (old && old.size === file.size && old.mtime === file.lastModified) { r.skipped++; continue; }
       if (!old && ctx.sigs.has(`${file.name}|${file.size}`)) { r.skipped++; continue; } // ya está (copiada o repetida)
-      const extra = { src: s.id, path: rel };
+      const extra = { src: s.id, path: rel, mtime: file.lastModified };
       if (old) Object.assign(extra, { id: old.id, fav: old.fav, addedAt: old.addedAt });
       await ingest(file, `${s.name}/${rel}`, ctx, extra);
       if (old) r.updated++; else r.added++;
@@ -1446,6 +1447,33 @@ const views = {
       trackList(tracks));
   },
 
+  genres() {
+    setHeader({ menu: appMenu, search: true });
+    if (!state.tracks.size) { mount(welcome()); return; }
+    const groups = genreGroups();
+    const list = [...groups.entries()].filter(([g]) => matchText(g)).sort(([a], [b]) => genreRank(a) - genreRank(b) || cmp(a, b));
+    mount(
+      el('div', { class: 'toolbar' }, el('span', { class: 'count' }, plural(list.length, 'género', 'géneros'))),
+      list.length
+        ? el('div', { class: 'list' }, ...list.map(([g, tracks]) => el('a', { class: 'row', href: '#/genre/' + enc(g) },
+          coverBox(tracks.find((t) => t.coverId)?.coverId, 'sm', g),
+          el('div', { class: 'meta' }, el('div', { class: 't1' }, g),
+            el('div', { class: 't2' }, [plural(tracks.length, 'canción', 'canciones'), sumDur(tracks) ? fmtTotal(sumDur(tracks)) : ''].filter(Boolean).join(' · '))))))
+        : empty('Nada coincide con tu búsqueda.'));
+  },
+
+  genre(name) {
+    setHeader({ back: '#/genres', title: '' });
+    const tracks = (genreGroups().get(name) || []).slice().sort((a, b) => cmp(artistOf(a), artistOf(b)) || cmp(a.title, b.title));
+    if (!tracks.length) { mount(empty('Este género ya no tiene canciones.')); return; }
+    const ids = tracks.map((t) => t.id);
+    mount(
+      hero(coverBox(tracks.find((t) => t.coverId)?.coverId, 'hero', name, false), 'Género', name, null,
+        [plural(tracks.length, 'canción', 'canciones'), sumDur(tracks) ? fmtTotal(sumDur(tracks)) : ''].filter(Boolean).join(' · ')),
+      actions(ids, () => collectionMenu(name, ids)),
+      trackList(tracks));
+  },
+
   playlists() {
     setHeader({ menu: appMenu });
     const favCount = [...state.tracks.values()].filter((t) => t.fav).length;
@@ -1494,6 +1522,24 @@ const views = {
   },
 };
 
+// Géneros: primero las categorías propias en este orden, luego el resto por nombre y "Sin género" al final.
+const GENRE_ORDER = ['Rock', 'Rock en español', 'Pop', 'Pop latino', 'Baladas', 'Salsa', 'Cumbia', 'Tropical', 'Reggae', 'Metal',
+  'Clásica', 'Música propia', 'Audiolibros'];
+const genreOf = (t) => (t.genre || '').split(/[;\/]/)[0].trim() || 'Sin género';
+function genreRank(g) {
+  const i = GENRE_ORDER.findIndex((x) => x.toLowerCase() === g.toLowerCase());
+  return i >= 0 ? i : g === 'Sin género' ? 999 : 500;
+}
+function genreGroups() {
+  const m = new Map();
+  for (const t of state.tracks.values()) {
+    const g = genreOf(t);
+    if (!m.has(g)) m.set(g, []);
+    m.get(g).push(t);
+  }
+  return m;
+}
+
 function albumCard(a) {
   return el('a', { class: 'card', href: '#/album/' + enc(a.key) },
     coverBox(a.coverId, 'lg', a.name),
@@ -1521,7 +1567,7 @@ function renderMain(h) {
   if (lastMain) scrollMem.set(lastMain, scrollY);
   lastMain = h;
   const { view, arg } = parseHash(h);
-  const tab = { album: 'albums', artist: 'artists', playlist: 'playlists' }[view] || view;
+  const tab = { album: 'albums', artist: 'artists', genre: 'genres', playlist: 'playlists' }[view] || view;
   ui.tabs.querySelectorAll('.tab').forEach((b) => b.classList.toggle('active', b.dataset.tab === tab));
   main().replaceChildren();
   (views[view] || views.songs)(arg);
