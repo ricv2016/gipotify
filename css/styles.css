@@ -210,6 +210,10 @@ select {
 .icon-btn.mode { color: var(--fg2); position: relative; }
 .icon-btn.mode.on { color: var(--accent); }
 .icon-btn.mode.on::after { content: ""; position: absolute; bottom: 4px; width: 4px; height: 4px; border-radius: 50%; background: var(--accent); }
+.p-controls [hidden] { display: none; }
+/* botones de audiolibro: flecha circular con "30" en el centro */
+.icon-btn.skip30 { position: relative; }
+.icon-btn.skip30::after { content: "30"; position: absolute; left: 50%; top: 56%; transform: translate(-50%, -50%); font-size: 9px; font-weight: 700; }
 .play-big {
   width: 72px; height: 72px; border-radius: 50%; display: grid; place-items: center;
   background: var(--accent); color: var(--accent-fg); box-shadow: 0 8px 26px rgba(245, 165, 36, .35);

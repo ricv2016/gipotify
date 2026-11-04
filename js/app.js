@@ -296,12 +296,14 @@ let dragging = false;
 
 async function loadTrack(i, autoplay = true, startAt = 0) {
   if (i < 0 || i >= state.queue.length) return;
+  saveBookmark(); // si se deja un audiolibro a medias, guardar dónde quedó
   const tok = ++loadToken;
   state.index = i;
   const id = state.queue[i];
   const t = state.tracks.get(id);
   updateNowPlaying();
   if (!t) return;
+  if (!startAt && isBook(t)) startAt = bookmarkOf(t.id);
   let blob = null;
   try {
     blob = await getTrackFile(t, autoplay);
@@ -423,8 +425,12 @@ function removeFromQueue(i) {
 }
 
 audio.addEventListener('play', () => { errorStreak = 0; updatePlayState(); });
-audio.addEventListener('pause', updatePlayState);
-audio.addEventListener('ended', () => next(true));
+audio.addEventListener('pause', () => { updatePlayState(); saveBookmark(); });
+audio.addEventListener('ended', () => {
+  const t = state.tracks.get(currentId());
+  if (isBook(t)) localStorage.removeItem(BOOK_KEY + t.id); // terminado: la próxima vez empieza desde el principio
+  next(true);
+});
 audio.addEventListener('loadedmetadata', () => {
   const t = state.tracks.get(currentId());
   if (t && isFinite(audio.duration) && Math.abs((t.duration || 0) - audio.duration) > 1) {
@@ -438,8 +444,28 @@ audio.addEventListener('seeked', updatePosition);
 let lastSave = 0;
 audio.addEventListener('timeupdate', () => {
   updateProgress();
-  if (Date.now() - lastSave > 5000) { lastSave = Date.now(); saveSession(); }
+  if (Date.now() - lastSave > 5000) { lastSave = Date.now(); saveSession(); saveBookmark(); }
 });
+
+// ----- audiolibros: cada uno recuerda dónde quedó, aunque en medio se escuche otra cosa -----
+const BOOK_KEY = 'gipotify.book.';
+const isBook = (t) => !!t && genreOf(t).toLowerCase() === 'audiolibros';
+const bookmarkOf = (id) => +localStorage.getItem(BOOK_KEY + id) || 0;
+function saveBookmark() {
+  const t = state.tracks.get(currentId());
+  if (!isBook(t) || !audio.getAttribute('src')) return;
+  const pos = audio.currentTime || 0;
+  if (pos < 10) return; // recién cargado: no pisar el marcador con un 0
+  const dur = audio.duration || t.duration || 0;
+  try {
+    if (dur && pos > dur - 30) localStorage.removeItem(BOOK_KEY + t.id);
+    else localStorage.setItem(BOOK_KEY + t.id, String(Math.floor(pos)));
+  } catch { /* sin espacio: no es grave */ }
+}
+function skip(sec) {
+  if (!audio.getAttribute('src')) return;
+  audio.currentTime = Math.min(Math.max(0, audio.currentTime + sec), audio.duration || Infinity);
+}
 audio.addEventListener('error', () => {
   if (!audio.getAttribute('src')) return;
   const t = state.tracks.get(currentId());
@@ -503,8 +529,8 @@ function restoreSession() {
     loadTrack(i >= 0 ? i : 0, false, i >= 0 ? s.pos : 0);
   } catch { /* sesión dañada: se ignora */ }
 }
-addEventListener('pagehide', saveSession);
-document.addEventListener('visibilitychange', () => { if (document.hidden) saveSession(); });
+addEventListener('pagehide', () => { saveSession(); saveBookmark(); });
+document.addEventListener('visibilitychange', () => { if (document.hidden) { saveSession(); saveBookmark(); } });
 
 // ================= interfaz del reproductor =================
 const ui = {};
@@ -539,6 +565,9 @@ function buildPlayerUI() {
   ui.pPlay = btn('play', togglePlay, 'Reproducir / pausar', 'play-big');
   ui.pShuffle = btn('shuffle', toggleShuffle, 'Aleatorio', 'icon-btn mode');
   ui.pRepeat = btn('repeat', cycleRepeat, 'Repetir', 'icon-btn mode');
+  ui.pBack30 = btn('back30', () => skip(-30), 'Retroceder 30 segundos', 'icon-btn skip30');
+  ui.pFwd30 = btn('fwd30', () => skip(30), 'Avanzar 30 segundos', 'icon-btn skip30');
+  ui.pBack30.hidden = true; ui.pFwd30.hidden = true;
   ui.pQueue = el('div', { class: 'queue' });
   ui.player = el('div', { class: 'player', hidden: true },
     el('div', { class: 'p-top' },
@@ -549,7 +578,7 @@ function buildPlayerUI() {
     el('div', { class: 'p-info' }, el('div', { class: 'p-text' }, ui.pTitle, ui.pArtist, ui.pAlbum), ui.pFav),
     ui.pSeek,
     el('div', { class: 'p-times' }, ui.pCur, ui.pDur),
-    el('div', { class: 'p-controls' }, ui.pShuffle, btn('prev', prev, 'Anterior', 'icon-btn big'), ui.pPlay, btn('next', () => next(), 'Siguiente', 'icon-btn big'), ui.pRepeat),
+    el('div', { class: 'p-controls' }, ui.pShuffle, ui.pBack30, btn('prev', prev, 'Anterior', 'icon-btn big'), ui.pPlay, btn('next', () => next(), 'Siguiente', 'icon-btn big'), ui.pFwd30, ui.pRepeat),
     el('h3', { class: 'q-title' }, 'A continuación'),
     ui.pQueue);
   $('#player-root').append(ui.player);
@@ -597,6 +626,10 @@ function updateNowPlaying() {
   ui.pAlbum.textContent = albumOf(t);
   setCover(ui.miniCover, t.coverId, t.album || t.title);
   setCover(ui.pCover, t.coverId, t.album || t.title);
+  // En audiolibros: ±30 s en lugar de aleatorio/repetir
+  const book = isBook(t);
+  ui.pShuffle.hidden = book; ui.pRepeat.hidden = book;
+  ui.pBack30.hidden = !book; ui.pFwd30.hidden = !book;
   updateFav();
   updateProgress(); updatePlayState(); updateModes();
   markPlaying();
