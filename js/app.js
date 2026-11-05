@@ -232,10 +232,13 @@ function sheet(title, items, subtitle) {
 function dialog({ title, message, body, fields = [], ok = 'Aceptar', cancel = 'Cancelar', danger = false, noCancel = false }) {
   return new Promise((resolve) => {
     let answer = null;
-    const inputs = fields.map((f) => el('input', {
-      name: f.name, value: f.value ?? '', placeholder: f.placeholder || '', type: f.type || 'text',
-      inputmode: f.inputmode, autocomplete: 'off', autocapitalize: f.autocapitalize || 'sentences',
-    }));
+    const inputs = fields.map((f) => f.options
+      // Lista desplegable: options = [[valor, texto], ...]
+      ? el('select', { name: f.name }, ...f.options.map(([v, label]) => el('option', { value: v, selected: v === (f.value ?? '') }, label)))
+      : el('input', {
+        name: f.name, value: f.value ?? '', placeholder: f.placeholder || '', type: f.type || 'text',
+        inputmode: f.inputmode, autocomplete: 'off', autocapitalize: f.autocapitalize || 'sentences',
+      }));
     const form = el('form', {
       class: 'dialog', novalidate: true,
       onsubmit: async (e) => {
@@ -715,11 +718,14 @@ async function editTrack(t) {
       { name: 'albumArtist', label: 'Artista del álbum (opcional)', value: t.albumArtist },
       { name: 'track', label: 'N.º de pista', value: t.track || '', inputmode: 'numeric' },
       { name: 'year', label: 'Año', value: t.year || '', inputmode: 'numeric' },
+      { name: 'genre', label: 'Género', value: genreKey(t), options: genreOptions(genreKey(t)) },
     ],
     ok: 'Guardar',
   });
   if (!v) return;
-  Object.assign(t, { title: v.title, artist: v.artist, album: v.album, albumArtist: v.albumArtist, track: parseInt(v.track, 10) || 0, year: v.year });
+  // El género solo se reemplaza si se cambió: así no se pierden géneros múltiples ("Rock; Pop") que no se tocaron.
+  const genre = v.genre === genreKey(t) ? t.genre : v.genre;
+  Object.assign(t, { title: v.title, artist: v.artist, album: v.album, albumArtist: v.albumArtist, track: parseInt(v.track, 10) || 0, year: v.year, genre });
   await db.put('tracks', t);
   touch();
   if (currentId() === t.id) updateNowPlaying();
@@ -1562,6 +1568,14 @@ const genreOf = (t) => (t.genre || '').split(/[;\/]/)[0].trim() || 'Sin género'
 function genreRank(g) {
   const i = GENRE_ORDER.findIndex((x) => x.toLowerCase() === g.toLowerCase());
   return i >= 0 ? i : g === 'Sin género' ? 999 : 500;
+}
+// Género con el que se agrupa la canción ('' = sin género), y la lista de géneros ya existentes para elegir.
+const genreKey = (t) => { const g = genreOf(t); return g === 'Sin género' ? '' : g; };
+function genreOptions(current) {
+  const names = new Set([...state.tracks.values()].map(genreKey).filter(Boolean));
+  if (current) names.add(current);
+  const list = [...names].sort((a, b) => genreRank(a) - genreRank(b) || cmp(a, b));
+  return [['', 'Sin género'], ...list.map((g) => [g, g])];
 }
 function genreGroups() {
   const m = new Map();

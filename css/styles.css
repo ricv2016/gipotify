@@ -252,11 +252,11 @@ select {
 .dialog h2 { font-size: 19px; }
 .dialog p { color: var(--fg2); }
 .dialog label { display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: var(--fg2); }
-.dialog input {
+.dialog input, .dialog select {
   height: 46px; padding: 0 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--bg3);
   color: var(--fg); font: inherit; font-size: 16px; outline: 0;
 }
-.dialog input:focus { border-color: var(--accent); }
+.dialog input:focus, .dialog select:focus { border-color: var(--accent); }
 .dialog-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 6px; }
 .info { display: grid; grid-template-columns: auto 1fr; gap: 8px 14px; margin: 0; font-size: 14px; }
 .info dt { color: var(--fg2); }
