@@ -718,7 +718,7 @@ async function editTrack(t) {
       { name: 'albumArtist', label: 'Artista del álbum (opcional)', value: t.albumArtist },
       { name: 'track', label: 'N.º de pista', value: t.track || '', inputmode: 'numeric' },
       { name: 'year', label: 'Año', value: t.year || '', inputmode: 'numeric' },
-      { name: 'genre', label: 'Género', value: genreKey(t), options: genreOptions(genreKey(t)) },
+      { name: 'genre', label: 'Género', value: genreKey(t), options: genreOptions() },
     ],
     ok: 'Guardar',
   });
@@ -1561,22 +1561,18 @@ const views = {
   },
 };
 
-// Géneros: primero las categorías propias en este orden, luego el resto por nombre y "Sin género" al final.
-const GENRE_ORDER = ['Rock', 'Rock en español', 'Pop', 'Pop latino', 'Baladas', 'Salsa', 'Cumbia', 'Tropical', 'Reggae', 'Metal',
-  'Clásica', 'Música propia', 'Audiolibros'];
-const genreOf = (t) => (t.genre || '').split(/[;\/]/)[0].trim() || 'Sin género';
-function genreRank(g) {
-  const i = GENRE_ORDER.findIndex((x) => x.toLowerCase() === g.toLowerCase());
-  return i >= 0 ? i : g === 'Sin género' ? 999 : 500;
-}
-// Género con el que se agrupa la canción ('' = sin género), y la lista de géneros ya existentes para elegir.
+// Géneros que se usan en la app (elegidos por Richard). Cualquier otra etiqueta del archivo
+// (Latin, Hard Rock, K-Pop...) se agrupa en "Sin género". Todo se muestra en orden alfabético.
+const GENRES = ['Audiolibros', 'Baladas', 'Clásica', 'Cumbia', 'Metal', 'Música propia', 'Pop', 'Pop latino',
+  'Rock', 'Rock en español', 'Salsa', 'Tropical'];
+const genreOf = (t) => {
+  const g = (t.genre || '').split(/[;\/]/)[0].trim().toLowerCase();
+  return GENRES.find((x) => x.toLowerCase() === g) || 'Sin género';
+};
+const genreRank = (g) => (g === 'Sin género' ? 1 : 0); // "Sin género" siempre al final
+// Género con el que se agrupa la canción ('' = sin género), y la lista de géneros para elegir.
 const genreKey = (t) => { const g = genreOf(t); return g === 'Sin género' ? '' : g; };
-function genreOptions(current) {
-  const names = new Set([...state.tracks.values()].map(genreKey).filter(Boolean));
-  if (current) names.add(current);
-  const list = [...names].sort((a, b) => genreRank(a) - genreRank(b) || cmp(a, b));
-  return [['', 'Sin género'], ...list.map((g) => [g, g])];
-}
+const genreOptions = () => [['', 'Sin género'], ...GENRES.slice().sort(cmp).map((g) => [g, g])];
 function genreGroups() {
   const m = new Map();
   for (const t of state.tracks.values()) {

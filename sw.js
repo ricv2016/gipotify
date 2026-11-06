@@ -1,6 +1,6 @@
 // Service worker: guarda la app en el celular para que abra sin internet.
 // Al cambiar cualquier archivo de la app, sube VERSION para que el celular la actualice.
-const VERSION = 'gipotify-v8';
+const VERSION = 'gipotify-v9';
 const ASSETS = [
   './',
   './index.html',
